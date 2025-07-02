@@ -1,0 +1,159 @@
+# Install necessary libraries for visualisation and manipulation of the stocks to understand them using conda
+%conda install pandas numpy matplotlib seaborn statsmodels -y
+
+%pip install yfinance
+# Now importing all the necessary libraries for data manipulation, visualization,and statistical analysis.
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.vector_ar.vecm import coint_johansen
+from statsmodels.tsa.stattools import grangercausalitytests
+print("All libraries imported successfully!")
+
+# List of railway stock tickers on NSE (National Stock Exchange of India)
+tickers = ['IRFC.NS', 'RVNL.NS', 'IRCTC.NS', 'IRCON.NS', 'RITES.NS']
+print(tickers)
+
+# The time period for the data
+start_date = '2023-01-01'
+end_date = '2024-07-01'
+
+# Downloading the adjusted closing prices for each ticker using the yfinance library.
+print("--- Downloading Data ---")
+adj_close_df = yf.download(tickers, start=start_date, end=end_date,auto_adjust=True)['Close']
+
+# --- Data Inspection and Cleaning ---
+print("\n--- Adjusted Close Prices (First 5 Rows) ---")
+print(adj_close_df.head())
+
+# Checking for any missing values
+print("\n--- Missing Values Check ---")
+print(adj_close_df.isnull().sum())
+
+# Fill any missing values using forward fill. This propagates the last valid
+# observation forward to fill any gaps (e.g., from market holidays).       --- taking help from google gemini 
+adj_close_df.ffill(inplace=True)
+print("\n--- Missing Values After Filling ---")
+print(adj_close_df.isnull().sum())
+
+# ------------------------------------------------------Data Analysis ------------------------------------------------------
+# Visualizes the data to confirm our initial hypothesis that the stocks move together.
+
+#Normalize Prices and Plot
+# Normalizing prices to a base of 100 makes it easier to compare their relative performance.
+normalized_prices = (adj_close_df / adj_close_df.iloc[0]) * 100
+
+plt.figure(figsize=(14, 7))
+normalized_prices.plot(ax=plt.gca())
+plt.title('Normalized Stock Prices of Indian Railway Stocks (Base 100)', fontsize=16)
+plt.xlabel('Date', fontsize=12)
+plt.ylabel('Normalized Price', fontsize=12)
+plt.grid(True)
+plt.legend(title='Ticker')
+plt.show()
+
+#Calculate Daily Returns and Plot Correlation Heatmap ---
+# Time series analysis is often done on returns, which are more stationary than prices.
+daily_returns = adj_close_df.pct_change().dropna()
+print("\n--- Daily Returns (First 5 Rows) ---")
+print(daily_returns.head())
+
+# The heatmap gives a clear visual representation of the correlation strength.
+plt.figure(figsize=(10, 6))
+sns.heatmap(daily_returns.corr(), annot=True, cmap='viridis', fmt=".2f", linewidths=.5)
+plt.title('Correlation Matrix of Daily Returns', fontsize=16)
+plt.show()
+
+# ------------------------------------------------------Statistical Analysis------------------------------------------------------
+# Performing formal statistical tests to analyze the relationships between the stocks more rigorously.
+
+# --- Stationarity Test (Augmented Dickey-Fuller Test) ---
+#
+# We test if the daily returns are stationary. A stationary series has constant mean and variance over time, which is a key assumption for many models.
+#
+# Null Hypothesis (H₀): It is non-stationary.
+# We reject H₀ if the p-value is less than 0.05.
+
+def run_adf_test(series, name):
+    """Performs the ADF test and prints a summary of the results."""
+    result = adfuller(series)
+    print(f'\n--- ADF Test Results for {name} ---')
+    print(f'ADF Statistic: {result[0]:.4f}')
+    print(f'p-value: {result[1]:.4f}')
+    if result[1] <= 0.05:
+        print("Conclusion: Reject the null hypothesis. The series is likely stationary.")
+    else:
+        print("Conclusion: Fail to reject the null hypothesis. The series is likely non-stationary.")
+    print('-'*50)
+
+# Run the test on the daily returns of each stock
+for stock in daily_returns.columns:
+    run_adf_test(daily_returns[stock], stock)
+
+# --- Cointegration Test (Johansen Test) ---
+# Cointegration suggests that while individual stock prices may wander over time, they are linked by a long-run equilibrium relationship. We perform this test
+# on the original price data.
+#
+# Null Hypothesis (H₀): There are `r` or fewer cointegrating relationships.
+# We reject H₀ if the Trace Statistic > Critical Value (at 95% confidence).
+
+print("\n--- Johansen Cointegration Test ---")
+result = coint_johansen(adj_close_df, det_order=0, k_ar_diff=1)
+
+def print_johansen_results(johansen_result):
+    """Prints the results of the Johansen test in a readable format."""
+    print("\nTest Statistic (Trace)", "95% Critical Value", "Hypothesized No. of CE(s)")
+    trace_stat = johansen_result.lr1
+    crit_vals = johansen_result.cvm[:, 1] # 95% critical values
+    for i in range(len(trace_stat)):
+        print(f"{trace_stat[i]:<25.4f} {crit_vals[i]:<20.4f} {i}")
+
+print_johansen_results(result)
+
+# Determine the number of cointegrating equations
+num_cointegrating_relations = 0
+for i in range(len(result.lr1)):
+    if result.lr1[i] > result.cvm[i, 1]:
+        num_cointegrating_relations += 1
+
+print(f"\nNumber of cointegrating relationships found: {num_cointegrating_relations}")
+
+#---  Granger Causality Test ---
+# This test helps determine if the past values of one time series are useful for
+# predicting the future values of another. It's a great way to find potential
+# lead-lag effects.
+#
+# Null Hypothesis (H₀): Time series Y does NOT Granger-cause time series X.
+# We reject H₀ if the p-value for the F-test is less than 0.05.
+
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+from itertools import permutations
+import warnings
+
+# Suppress FutureWarning from statsmodels
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+print("\n\n--- Granger Causality Test ---")
+max_lag = 5
+
+def run_granger_causality(data, variables, max_lag=5):
+    """Runs and prints the Granger Causality test for a pair of variables."""
+    print(f"\nTesting for Granger Causality: Does {variables[1]} -> {variables[0]}?")
+    test_result = grangercausalitytests(data[variables], max_lag, verbose=False)
+    for lag in range(1, max_lag + 1):
+        p_value = test_result[lag][0]['ssr_ftest'][1]
+        if p_value <= 0.05:
+            print(f"  LAG {lag}: Significant p-value = {p_value:.4f}. {variables[1]} may Granger-cause {variables[0]}.")
+        else:
+            print(f"  LAG {lag}: Insignificant p-value = {p_value:.4f}")
+    print('-'*60)
+
+# Test all pairs of stocks
+for pair in permutations(daily_returns.columns, 2):
+    run_granger_causality(daily_returns, list(pair), max_lag=max_lag)
+
+print("\n--- Analysis Complete ---")
