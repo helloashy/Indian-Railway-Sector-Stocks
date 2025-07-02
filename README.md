@@ -29,5 +29,5 @@ Stocks to Analyze: Start with a list of prominent railway-related stocks. Key pl
 
 
 TOOLS:-
-# LANGUAGE: Python
-# LIBRARIES: |Pandas: For data manipulation and analysis.|__|NumPy: For numerical operations.|__|Statsmodels: For conducting statistical tests (ADF, Johansen, Granger causality) and fitting time series models like VAR.|__|yfinance: For downloading stock market data.| 
++++++  LANGUAGE: Python
++++++  LIBRARIES: |Pandas: For data manipulation and analysis.|__|NumPy: For numerical operations.|__|Statsmodels: For conducting statistical tests (ADF, Johansen, Granger causality) and fitting time series models like VAR.|__|yfinance: For downloading stock market data.| 
